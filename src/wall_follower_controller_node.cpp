@@ -11,16 +11,29 @@
 #define TOPIC_TWIST         "/s8/twist"
 #define TOPIC_IR_DISTANCES  "/s8/ir_distances"
 
-#define PARAM_KP_NAME       "kp"
-#define PARAM_KP_DEFAULT    0.1
+#define PARAM_KP_NAME                   "kp"
+#define PARAM_KP_DEFAULT                6.0
+#define PARAM_KD_NAME                   "kd"
+#define PARAM_KD_DEFAULT                6.0
+#define PARAM_KP_LEFT_NAME              "kp_left"
+#define PARAM_KP_LEFT_DEFAULT           1.0
+#define PARAM_KP_RIGHT_NAME             "kp_right"
+#define PARAM_KP_RIGHT_DEFAULT          0.2
+#define PARAM_DISTANCE_NAME             "distance"
+#define PARAM_DISTANCE_DEFAULT          0.1
 
-#define IR_INVALID_VALUE    -1.0
+#define IR_INVALID_VALUE                -1.0
 
 class WallFollower : public s8::Node {
     ros::Subscriber ir_distances_subscriber;
     ros::Publisher twist_publisher;
 
+    double kp_left;
+    double kp_right;
     double kp;
+    double kd;
+    double pre_err;
+    double distance;
 
     double left_front;
     double left_back;
@@ -29,9 +42,10 @@ class WallFollower : public s8::Node {
 
     double v;
     double w;
+    double w_temp;
 
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE) {
+    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), pre_err(0.0) {
         init_params();
         print_params();
 
@@ -48,8 +62,25 @@ public:
             //Do right wall following
 
             double diff = right_front - right_back;
+            double average = (right_back + right_front) / 2 ;
 
             w = -kp * diff;
+            w += -kd * (diff-pre_err) / 2;
+            pre_err = diff;
+
+            if (average-distance < 0) {
+                // if too close to the wall, turn left fast
+                w += kp_left * (distance - average);
+            } else {
+                //if too far away to the wall, turn right slowly
+                w_temp = -kp_right * (distance - average);
+
+                if(w_temp < -0.2) {
+                    w_temp = -0.2;
+                }
+
+                w += w_temp;
+            }
 
             v = 0.3;
 
@@ -86,6 +117,10 @@ private:
 
     void init_params() {
         add_param(PARAM_KP_NAME, kp, PARAM_KP_DEFAULT);
+        add_param(PARAM_KD_NAME, kd, PARAM_KD_DEFAULT);
+        add_param(PARAM_KP_LEFT_NAME, kp_left, PARAM_KP_LEFT_DEFAULT);
+        add_param(PARAM_KP_RIGHT_NAME, kp_right, PARAM_KP_RIGHT_DEFAULT);
+        add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
     }
 };
 
