@@ -1,3 +1,5 @@
+#include <cmath>
+
 #include <ros/ros.h>
 
 #include <geometry_msgs/Twist.h>
@@ -32,8 +34,10 @@ class WallFollower : public s8::Node {
     double kp_far;
     double kp;
     double kd;
-    double prev_error;
     double distance;
+
+    double right_prev_diff;
+    double left_prev_diff;
 
     double left_front;
     double left_back;
@@ -42,10 +46,9 @@ class WallFollower : public s8::Node {
 
     double v;
     double w;
-    double w_temp;
 
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), prev_error(0.0) {
+    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0) {
         init_params();
         print_params();
 
@@ -61,30 +64,7 @@ public:
         } else if(is_ir_valid_value(right_front) && is_ir_valid_value(right_back)) {
             //Do right wall following
 
-            double diff = right_front - right_back;
-            double average = (right_back + right_front) / 2 ;
-
-            w = -kp * diff;
-            w += -kd * (diff-prev_error) / 2;
-            prev_error = diff;
-
-            if (average-distance < 0) {
-                // if too close to the wall, turn left fast
-                w += kp_near * (distance - average);
-            } else {
-                //if too far away to the wall, turn right slowly
-                w_temp = -kp_far * (distance - average);
-
-                if(w_temp < -0.2) {
-                    w_temp = -0.2;
-                }
-
-                w += w_temp;
-            }
-
-            v = 0.3;
-
-            ROS_INFO("Following right wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
+            controller(right_back, right_front, right_prev_diff, 1);
         } else {
             //Stop.
             v = 0.0;
@@ -96,6 +76,47 @@ public:
     }
     
 private:
+    void controller(double back, double front, double & prev_diff, double away_direction) {
+        double diff = front - back;
+        double average = (back + front) / 2;
+
+        w = 0.0;
+        p_controller(w, diff);
+        d_controller(w, diff, prev_diff);
+
+        double towards_direction = -away_direction;
+        double distance_diff = average - distance;
+
+        if(distance_diff < 0) {
+            // if too close to the wall, turn away fast.
+            w += -away_direction * kp_near * distance_diff;
+        } else {
+            //if too far away to the wall, turn towards slowly
+            double w_temp = towards_direction * kp_far * distance_diff;
+
+            double towards_treshold = towards_direction * 0.2;
+
+            if(std::abs((double)w_temp) > std::abs((double)towards_treshold)) {
+                w_temp = towards_treshold;
+            }
+
+            w += w_temp;
+        }
+
+        v = 0.3;
+
+        //ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
+    }
+
+    void p_controller(double & w, double diff) {
+        w += -kp * diff;
+    }
+
+    void d_controller(double & w, double diff, double & prev_diff) {
+        w += -kd * (diff - prev_diff) / 2;
+        prev_diff = diff;
+    }
+
     void ir_distances_callback(const s8_msgs::IRDistances::ConstPtr & ir_distances) {
         left_front = ir_distances->left_front;
         left_back = ir_distances->left_back;
