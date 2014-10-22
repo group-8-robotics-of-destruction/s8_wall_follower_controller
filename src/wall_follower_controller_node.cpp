@@ -5,20 +5,20 @@
 
 #include <s8_common_node/Node.h>
 
-#define NODE_NAME           "s8_wall_follower_controller_node"
-#define HZ                  10
+#define NODE_NAME                       "s8_wall_follower_controller_node"
+#define HZ                              10
 
-#define TOPIC_TWIST         "/s8/twist"
-#define TOPIC_IR_DISTANCES  "/s8/ir_distances"
+#define TOPIC_TWIST                     "/s8/twist"
+#define TOPIC_IR_DISTANCES              "/s8/ir_distances"
 
 #define PARAM_KP_NAME                   "kp"
 #define PARAM_KP_DEFAULT                6.0
 #define PARAM_KD_NAME                   "kd"
 #define PARAM_KD_DEFAULT                6.0
-#define PARAM_KP_LEFT_NAME              "kp_left"
-#define PARAM_KP_LEFT_DEFAULT           1.0
-#define PARAM_KP_RIGHT_NAME             "kp_right"
-#define PARAM_KP_RIGHT_DEFAULT          0.2
+#define PARAM_KP_NEAR_NAME              "kp_near"
+#define PARAM_KP_NEAR_DEFAULT           1.0
+#define PARAM_KP_FAR_NAME               "kp_far"
+#define PARAM_KP_FAR_DEFAULT            0.2
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.1
 
@@ -28,11 +28,11 @@ class WallFollower : public s8::Node {
     ros::Subscriber ir_distances_subscriber;
     ros::Publisher twist_publisher;
 
-    double kp_left;
-    double kp_right;
+    double kp_near;
+    double kp_far;
     double kp;
     double kd;
-    double pre_err;
+    double prev_error;
     double distance;
 
     double left_front;
@@ -45,7 +45,7 @@ class WallFollower : public s8::Node {
     double w_temp;
 
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), pre_err(0.0) {
+    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), prev_error(0.0) {
         init_params();
         print_params();
 
@@ -65,15 +65,15 @@ public:
             double average = (right_back + right_front) / 2 ;
 
             w = -kp * diff;
-            w += -kd * (diff-pre_err) / 2;
-            pre_err = diff;
+            w += -kd * (diff-prev_error) / 2;
+            prev_error = diff;
 
             if (average-distance < 0) {
                 // if too close to the wall, turn left fast
-                w += kp_left * (distance - average);
+                w += kp_near * (distance - average);
             } else {
                 //if too far away to the wall, turn right slowly
-                w_temp = -kp_right * (distance - average);
+                w_temp = -kp_far * (distance - average);
 
                 if(w_temp < -0.2) {
                     w_temp = -0.2;
@@ -118,8 +118,8 @@ private:
     void init_params() {
         add_param(PARAM_KP_NAME, kp, PARAM_KP_DEFAULT);
         add_param(PARAM_KD_NAME, kd, PARAM_KD_DEFAULT);
-        add_param(PARAM_KP_LEFT_NAME, kp_left, PARAM_KP_LEFT_DEFAULT);
-        add_param(PARAM_KP_RIGHT_NAME, kp_right, PARAM_KP_RIGHT_DEFAULT);
+        add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
+        add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
     }
 };
