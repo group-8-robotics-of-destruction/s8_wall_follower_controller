@@ -92,7 +92,7 @@ private:
             w += -away_direction * kp_near * distance_diff;
         } else {
             //if too far away to the wall, turn towards slowly
-            double w_temp = towards_direction * kp_far * distance_diff;
+            double w_temp = -towards_direction * kp_far * distance_diff;
 
             double towards_treshold = towards_direction * 0.2;
 
@@ -100,12 +100,12 @@ private:
                 w_temp = towards_treshold;
             }
 
-            w += w_temp;
+            w -= w_temp;
         }
 
         v = 0.3;
 
-        //ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
+        ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
     }
 
     void p_controller(double & w, double diff) {
