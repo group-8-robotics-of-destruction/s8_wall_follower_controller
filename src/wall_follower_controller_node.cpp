@@ -14,15 +14,21 @@
 #define TOPIC_IR_DISTANCES              "/s8/ir_distances"
 
 #define PARAM_KP_NAME                   "kp"
-#define PARAM_KP_DEFAULT                6.0
+#define PARAM_KP_DEFAULT                5.0
 #define PARAM_KD_NAME                   "kd"
 #define PARAM_KD_DEFAULT                6.0
 #define PARAM_KP_NEAR_NAME              "kp_near"
-#define PARAM_KP_NEAR_DEFAULT           1.0
+#define PARAM_KP_NEAR_DEFAULT           0.9
+#define PARAM_KI_NAME                   "ki"
+#define PARAM_KI_DEFAULT                0.4
 #define PARAM_KP_FAR_NAME               "kp_far"
-#define PARAM_KP_FAR_DEFAULT            0.2
+#define PARAM_KP_FAR_DEFAULT            0.1
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.1
+#define PARAM_I_THRESHOLD_NAME          "i_threshold"
+#define PARAM_I_THRESHOLD_DEFAULT       0.02
+#define PARAM_I_LIMIT_NAME              "i_limit"
+#define PARAM_I_LIMIT_DEFAULT           0.02
 
 #define IR_INVALID_VALUE                -1.0
 
@@ -34,10 +40,14 @@ class WallFollower : public s8::Node {
     double kp_far;
     double kp;
     double kd;
+    double ki;
     double distance;
+    double i_threshold;
+    double i_limit;
 
     double right_prev_diff;
     double left_prev_diff;
+    double sum_errors;
 
     double left_front;
     double left_back;
@@ -48,7 +58,7 @@ class WallFollower : public s8::Node {
     double w;
 
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0) {
+    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0) {
         init_params();
         print_params();
 
@@ -70,6 +80,7 @@ public:
             v = 0.0;
             w = 0.0;
             ROS_INFO("No walls in range. left_back: %.2lf, left_front: %.2lf, right_back: %.2lf, right_front: %.2lf", left_back, left_front, right_back, right_front);
+            sum_errors = 0;
         }
 
         publish();
@@ -102,6 +113,12 @@ private:
 
             w -= w_temp;
         }
+        if (std::abs(diff) < i_threshold) {
+            i_controller(w, distance_diff, sum_errors);
+        }
+	else {
+		sum_errors = 0;
+	}
 
         v = 0.3;
 
@@ -115,6 +132,17 @@ private:
     void d_controller(double & w, double diff, double & prev_diff) {
         w += -kd * (diff - prev_diff) / 2;
         prev_diff = diff;
+    }
+
+    void i_controller(double & w, double diff, double & sum_errors){
+        sum_errors += diff * (1.0 / HZ);
+        w += -ki * sum_errors;
+	// thresholding, tochange
+	if (sum_errors > i_limit)
+		sum_errors = i_limit;
+	else if (sum_errors < -i_limit)
+		sum_errors = -i_limit;
+        ROS_INFO("error_diff: %lf, i: %lf", diff*(1.0/HZ), -ki*sum_errors);
     }
 
     void ir_distances_callback(const s8_msgs::IRDistances::ConstPtr & ir_distances) {
@@ -141,7 +169,10 @@ private:
         add_param(PARAM_KD_NAME, kd, PARAM_KD_DEFAULT);
         add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
         add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
+        add_param(PARAM_KI_NAME, ki, PARAM_KI_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
+        add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
+        add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
     }
 };
 
