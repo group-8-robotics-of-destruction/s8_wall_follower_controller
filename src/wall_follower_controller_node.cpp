@@ -34,6 +34,8 @@
 #define PARAM_I_THRESHOLD_DEFAULT       0.02
 #define PARAM_I_LIMIT_NAME              "i_limit"
 #define PARAM_I_LIMIT_DEFAULT           0.02
+#define PARAM_LINEAR_SPEED_NAME         "linear_speed"
+#define PARAM_LINEAR_SPEED_DEFAULT      0.2
 
 #define IR_INVALID_VALUE                -1.0
 #define REASON_TIMEOUT                  1
@@ -73,6 +75,7 @@ private:
 
     double v;
     double w;
+    double linear_speed;
 
     FollowWall wall_to_follow;
     bool following;
@@ -208,7 +211,7 @@ private:
             sum_errors = 0;
         }
 
-        v = 0.15;
+        v = linear_speed;
 
         ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
     }
@@ -264,6 +267,7 @@ private:
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
         add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
         add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
+        add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
     }
 };
 
