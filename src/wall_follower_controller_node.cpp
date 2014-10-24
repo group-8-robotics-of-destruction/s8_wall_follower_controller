@@ -2,11 +2,13 @@
 
 #include <ros/ros.h>
 #include <actionlib/client/simple_action_client.h>
+#include <actionlib/server/simple_action_server.h>
 #include <s8_common_node/Node.h>
 
 #include <geometry_msgs/Twist.h>
 #include <s8_msgs/IRDistances.h>
 #include <s8_motor_controller/StopAction.h>
+#include <s8_wall_follower_controller/FollowWallAction.h>
 
 #define NODE_NAME                       "s8_wall_follower_controller_node"
 #define HZ                              10
@@ -14,6 +16,7 @@
 #define TOPIC_TWIST                     "/s8/twist"
 #define TOPIC_IR_DISTANCES              "/s8/ir_distances"
 #define ACTION_STOP                     "/s8_motor_controller/stop"
+#define ACTION_FOLLOW_WALL              "/s8/follow_wall"
 
 #define PARAM_KP_NAME                   "kp"
 #define PARAM_KP_DEFAULT                5.0
@@ -33,10 +36,21 @@
 #define PARAM_I_LIMIT_DEFAULT           0.02
 
 #define IR_INVALID_VALUE                -1.0
+#define REASON_TIMEOUT                  1
+#define REASON_OUT_OF_RANGE             1 << 1
+#define REASON_PREEMPTED                1 << 2
 
 class WallFollower : public s8::Node {
+public:
+    enum FollowWall {
+        LEFT = -1,
+        RIGHT = 1
+    };
+
+private:
     ros::Subscriber ir_distances_subscriber;
     ros::Publisher twist_publisher;
+    actionlib::SimpleActionServer<s8_wall_follower_controller::FollowWallAction> follow_wall_action;
     actionlib::SimpleActionClient<s8_motor_controller::StopAction> stop_action;
 
     double kp_near;
@@ -60,33 +74,42 @@ class WallFollower : public s8::Node {
     double v;
     double w;
 
+    FollowWall wall_to_follow;
+    bool following;
+    bool preempted;
+
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true) {
+    WallFollower() : v(0.0), w(0.0), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
         ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1000, &WallFollower::ir_distances_callback, this);
         twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1000);
+        
+        follow_wall_action.registerPreemptCallback(boost::bind(&WallFollower::follow_wall_cancel_callback, this));
+
+        follow_wall_action.start();
+
         ROS_INFO("Waiting for stop action server...");
         stop_action.waitForServer();
         ROS_INFO("Connected to stop action server!");
     }
 
     void update() {
-        if(false && is_ir_valid_value(left_front) && is_ir_valid_value(left_back)) {
-            //Do left wall following
+        if(!following) {
+            return;
+        }
 
-            ROS_INFO("Following left wall... back: %.2lf, front: %.2lf", left_back, left_front);
-        } else if(is_ir_valid_value(right_front) && is_ir_valid_value(right_back)) {
-            //Do right wall following
+        double back = wall_to_follow == WallFollower::LEFT ? left_back : right_back;
+        double front = wall_to_follow == WallFollower::LEFT ? left_front : right_front;
+        double prev_diff = wall_to_follow == WallFollower::LEFT ? left_prev_diff : right_prev_diff;
 
-            controller(right_back, right_front, right_prev_diff, 1);
+        if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
+            ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+            controller(back, front, prev_diff, (int)wall_to_follow);
         } else {
-            //Stop.
-            v = 0.0;
-            w = 0.0;
-            ROS_INFO("No walls in range. left_back: %.2lf, left_front: %.2lf, right_back: %.2lf, right_front: %.2lf", left_back, left_front, right_back, right_front);
-            sum_errors = 0;
+            following = false;
+            return;
         }
 
         publish();
@@ -108,6 +131,50 @@ public:
     }
     
 private:
+    void follow_wall_cancel_callback() {
+        following = false;
+        preempted = true;
+        v = 0.0;
+        w = 0.0;
+
+        s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
+        follow_wall_action_result.reason = REASON_PREEMPTED;
+        follow_wall_action.setPreempted(follow_wall_action_result);
+
+        ROS_INFO("Cancelling wall following action...");
+    }
+
+    void action_execute_follow_wall_callback(const s8_wall_follower_controller::FollowWallGoalConstPtr & goal) {
+        wall_to_follow = FollowWall(goal->wall_to_follow);
+
+        const int timeout = 30; // 30 seconds.
+        const int rate_hz = 10;
+
+        ros::Rate rate(rate_hz);
+
+        int ticks = 0;
+
+        ROS_INFO("Wall following action started. Wall to follow: %s", wall_to_follow == WallFollower::LEFT ? "left" : "right");
+
+        preempted = false;
+        following = true;
+        while(following && ticks <= timeout * rate_hz) {
+            rate.sleep();
+            ticks++;
+        }
+
+        if(ticks >= timeout * rate_hz) {
+            ROS_WARN("Wall following action timed out.");
+            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
+            follow_wall_action_result.reason = REASON_TIMEOUT;
+            follow_wall_action.setAborted(follow_wall_action_result);
+        } else if(!preempted) {
+            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
+            follow_wall_action_result.reason = REASON_OUT_OF_RANGE;
+            follow_wall_action.setSucceeded(follow_wall_action_result);
+        }
+    }
+
     void controller(double back, double front, double & prev_diff, double away_direction) {
         double diff = front - back;
         double average = (back + front) / 2;
@@ -134,14 +201,14 @@ private:
 
             w -= w_temp;
         }
-        if (std::abs(diff) < i_threshold) {
+        
+        if(std::abs(diff) < i_threshold) {
             i_controller(w, distance_diff, sum_errors);
+        } else {
+            sum_errors = 0;
         }
-	else {
-		sum_errors = 0;
-	}
 
-        v = 0.3;
+        v = 0.15;
 
         ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
     }
@@ -158,11 +225,14 @@ private:
     void i_controller(double & w, double diff, double & sum_errors){
         sum_errors += diff * (1.0 / HZ);
         w += -ki * sum_errors;
-	// thresholding, tochange
-	if (sum_errors > i_limit)
-		sum_errors = i_limit;
-	else if (sum_errors < -i_limit)
-		sum_errors = -i_limit;
+        
+        // thresholding, tochange
+        if (sum_errors > i_limit) {
+            sum_errors = i_limit;
+        } else if (sum_errors < -i_limit) {
+            sum_errors = -i_limit;
+        }
+        
         ROS_INFO("error_diff: %lf, i: %lf", diff*(1.0/HZ), -ki*sum_errors);
     }
 
@@ -205,8 +275,6 @@ int main(int argc, char **argv) {
     ros::Rate loop_rate(HZ);
 
     while(ros::ok()) {
-        wall_follower.stop();
-        return 0;
         wall_follower.update();
         ros::spinOnce();
         loop_rate.sleep();

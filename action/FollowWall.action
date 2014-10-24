@@ -1,0 +1,6 @@
+#goal
+int32 wall_to_follow
+---
+#result
+int32 reason
+---
