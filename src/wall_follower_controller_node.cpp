@@ -1,17 +1,19 @@
 #include <cmath>
 
 #include <ros/ros.h>
+#include <actionlib/client/simple_action_client.h>
+#include <s8_common_node/Node.h>
 
 #include <geometry_msgs/Twist.h>
 #include <s8_msgs/IRDistances.h>
-
-#include <s8_common_node/Node.h>
+#include <s8_motor_controller/StopAction.h>
 
 #define NODE_NAME                       "s8_wall_follower_controller_node"
 #define HZ                              10
 
 #define TOPIC_TWIST                     "/s8/twist"
 #define TOPIC_IR_DISTANCES              "/s8/ir_distances"
+#define ACTION_STOP                     "/s8_motor_controller/stop"
 
 #define PARAM_KP_NAME                   "kp"
 #define PARAM_KP_DEFAULT                5.0
@@ -35,6 +37,7 @@
 class WallFollower : public s8::Node {
     ros::Subscriber ir_distances_subscriber;
     ros::Publisher twist_publisher;
+    actionlib::SimpleActionClient<s8_motor_controller::StopAction> stop_action;
 
     double kp_near;
     double kp_far;
@@ -58,12 +61,15 @@ class WallFollower : public s8::Node {
     double w;
 
 public:
-    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0) {
+    WallFollower() : v(0.0), w(0.0), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true) {
         init_params();
         print_params();
 
         ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1000, &WallFollower::ir_distances_callback, this);
         twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1000);
+        ROS_INFO("Waiting for stop action server...");
+        stop_action.waitForServer();
+        ROS_INFO("Connected to stop action server!");
     }
 
     void update() {
@@ -84,6 +90,21 @@ public:
         }
 
         publish();
+    }
+
+    void stop() {
+        s8_motor_controller::StopGoal goal;
+        goal.stop = true;
+        stop_action.sendGoal(goal);
+
+        bool finised_before_timeout = stop_action.waitForResult(ros::Duration(30.0));
+
+        if(finised_before_timeout) {
+            actionlib::SimpleClientGoalState state = stop_action.getState();
+            ROS_INFO("Stop action finished. %s", state.toString().c_str());
+        } else {
+            ROS_WARN("Stop action timed out.");
+        }
     }
     
 private:
@@ -184,6 +205,8 @@ int main(int argc, char **argv) {
     ros::Rate loop_rate(HZ);
 
     while(ros::ok()) {
+        wall_follower.stop();
+        return 0;
         wall_follower.update();
         ros::spinOnce();
         loop_rate.sleep();

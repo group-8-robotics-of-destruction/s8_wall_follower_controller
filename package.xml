@@ -17,10 +17,12 @@
   <build_depend>s8_msgs</build_depend>
   <build_depend>geometry_msgs</build_depend>
   <build_depend>s8_common_node</build_depend>
+  <build_depend>s8_motor_controller</build_depend>
 
   <run_depend>roscpp</run_depend>
   <run_depend>s8_msgs</run_depend>
   <run_depend>geometry_msgs</run_depend>
   <run_depend>s8_common_node</run_depend>
+  <run_depend>s8_motor_controller</run_depend>
 
 </package>
