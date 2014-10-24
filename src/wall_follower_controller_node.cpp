@@ -81,8 +81,10 @@ private:
     bool following;
     bool preempted;
 
+    bool aligning;
+
 public:
-    WallFollower() : v(0.0), w(0.0), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    WallFollower() : v(0.0), w(0.0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
@@ -108,8 +110,19 @@ public:
         double prev_diff = wall_to_follow == WallFollower::LEFT ? left_prev_diff : right_prev_diff;
 
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
-            ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
-            controller(back, front, prev_diff, (int)wall_to_follow);
+            if(aligning) {
+                if(is_aligned(back, front)) {
+                    aligning = false;
+                } else {
+                    ROS_INFO("Aligning %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                    controller(back, front, prev_diff, (int)wall_to_follow, 0.0, false);
+                }
+            }
+
+            if(!aligning) {
+                ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed); 
+            }
         } else {
             following = false;
             return;
@@ -134,6 +147,10 @@ public:
     }
     
 private:
+    bool is_aligned(double back, double front) {
+        return std::abs(std::abs(back) - std::abs(front)) < 0.01;
+    }
+
     void follow_wall_cancel_callback() {
         following = false;
         preempted = true;
@@ -161,6 +178,7 @@ private:
 
         preempted = false;
         following = true;
+        aligning = true;
         while(following && ticks <= timeout * rate_hz) {
             rate.sleep();
             ticks++;
@@ -178,7 +196,7 @@ private:
         }
     }
 
-    void controller(double back, double front, double & prev_diff, double away_direction) {
+    void controller(double back, double front, double & prev_diff, double away_direction, double v_speed, bool do_distance = true) {
         double diff = front - back;
         double average = (back + front) / 2;
 
@@ -189,31 +207,33 @@ private:
         double towards_direction = -away_direction;
         double distance_diff = average - distance;
 
-        if(distance_diff < 0) {
-            // if too close to the wall, turn away fast.
-            w += -away_direction * kp_near * distance_diff;
-        } else {
-            //if too far away to the wall, turn towards slowly
-            double w_temp = -towards_direction * kp_far * distance_diff;
+        if(do_distance) {
+            if(distance_diff < 0) {
+                // if too close to the wall, turn away fast.
+                w += -away_direction * kp_near * distance_diff;
+            } else {
+                //if too far away to the wall, turn towards slowly
+                double w_temp = -towards_direction * kp_far * distance_diff;
 
-            double towards_treshold = towards_direction * 0.2;
+                double towards_treshold = towards_direction * 0.2;
 
-            if(std::abs((double)w_temp) > std::abs((double)towards_treshold)) {
-                w_temp = towards_treshold;
+                if(std::abs((double)w_temp) > std::abs((double)towards_treshold)) {
+                    w_temp = towards_treshold;
+                }
+
+                w -= w_temp;
             }
 
-            w -= w_temp;
-        }
-        
-        if(std::abs(diff) < i_threshold) {
-            i_controller(w, distance_diff, sum_errors);
-        } else {
-            sum_errors = 0;
+            if(std::abs(diff) < i_threshold) {
+                i_controller(w, distance_diff, sum_errors);
+            } else {
+                sum_errors = 0;
+            }
         }
 
-        v = linear_speed;
+        v = v_speed;
 
-        ROS_INFO("Following wall... back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
+        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
     }
 
     void p_controller(double & w, double diff) {
