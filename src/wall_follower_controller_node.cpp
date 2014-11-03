@@ -152,16 +152,20 @@ private:
     }
 
     void follow_wall_cancel_callback() {
-        following = false;
-        preempted = true;
-        v = 0.0;
-        w = 0.0;
+        stop_following();
 
         s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
         follow_wall_action_result.reason = REASON_PREEMPTED;
         follow_wall_action.setPreempted(follow_wall_action_result);
 
         ROS_INFO("Cancelling wall following action...");
+    }
+
+    void stop_following() {
+        following = false;
+        preempted = true;
+        v = 0.0;
+        w = 0.0;
     }
 
     void action_execute_follow_wall_callback(const s8_wall_follower_controller::FollowWallGoalConstPtr & goal) {
@@ -186,10 +190,12 @@ private:
 
         if(ticks >= timeout * rate_hz) {
             ROS_WARN("Wall following action timed out.");
+            stop_following();
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
             follow_wall_action_result.reason = REASON_TIMEOUT;
             follow_wall_action.setAborted(follow_wall_action_result);
         } else if(!preempted) {
+            stop_following();
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
             follow_wall_action_result.reason = REASON_OUT_OF_RANGE;
             follow_wall_action.setSucceeded(follow_wall_action_result);
