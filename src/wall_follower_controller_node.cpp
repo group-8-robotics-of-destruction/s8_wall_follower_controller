@@ -204,10 +204,10 @@ private:
         p_controller(w, diff);
         d_controller(w, diff, prev_diff);
 
-        double towards_direction = -away_direction;
-        double distance_diff = average - distance;
-
         if(do_distance) {
+            double towards_direction = -away_direction;
+            double distance_diff = average - distance;
+            
             if(distance_diff < 0) {
                 // if too close to the wall, turn away fast.
                 w += -away_direction * kp_near * distance_diff;
