@@ -112,13 +112,16 @@ public:
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
             if(aligning) {
                 if(is_aligned(back, front)) {
-                    aligning = false;
-                    ROS_INFO("Alignment complete!");
                     stop();
-                    v = 0.0;
-                    w = 0.0;
+                    if(is_aligned(back, front)) {
+                        aligning = false;
+                        ROS_INFO("Alignment complete!");
+                        v = 0.0;
+                        w = 0.0;
+                    }
+
                 } else {
-                    ROS_INFO("Aligning %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                    ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
                     double old_kp = kp;
                     double old_kd = kd;
                     kp *= 2;
@@ -160,7 +163,7 @@ public:
     
 private:
     bool is_aligned(double back, double front) {
-        return std::abs(std::abs(back) - std::abs(front)) < 0.01;
+        return std::abs(std::abs(back) - std::abs(front)) <= 0.015;
     }
 
     void follow_wall_cancel_callback() {
