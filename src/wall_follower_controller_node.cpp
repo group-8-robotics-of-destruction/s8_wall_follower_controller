@@ -294,7 +294,7 @@ private:
     void publish() {
         geometry_msgs::Twist twist;
         twist.linear.x = v;
-        twist.angular.z = w;
+        twist.angular.z = wall_to_follow * w;
 
         twist_publisher.publish(twist);
     }
