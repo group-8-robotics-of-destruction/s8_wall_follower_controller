@@ -113,9 +113,19 @@ public:
             if(aligning) {
                 if(is_aligned(back, front)) {
                     aligning = false;
+                    ROS_INFO("Alignment complete!");
+                    stop();
+                    v = 0.0;
+                    w = 0.0;
                 } else {
                     ROS_INFO("Aligning %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                    double old_kp = kp;
+                    double old_kd = kd;
+                    kp *= 2;
+                    kd *= 2;
                     controller(back, front, prev_diff, (int)wall_to_follow, 0.0, false);
+                    kp = old_kp;
+                    kd = old_kd;
                 }
             }
 
@@ -124,6 +134,7 @@ public:
                 controller(back, front, prev_diff, (int)wall_to_follow, linear_speed); 
             }
         } else {
+            ROS_INFO("Stopped following wall due to invalid ir sensor values. back: %lf, front: %lf", back, front);
             following = false;
             return;
         }
@@ -132,6 +143,7 @@ public:
     }
 
     void stop() {
+        ROS_INFO("Stopping...");
         s8_motor_controller::StopGoal goal;
         goal.stop = true;
         stop_action.sendGoal(goal);
