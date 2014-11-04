@@ -19,15 +19,15 @@
 #define ACTION_FOLLOW_WALL              "/s8/follow_wall"
 
 #define PARAM_KP_NAME                   "kp"
-#define PARAM_KP_DEFAULT                5.0
+#define PARAM_KP_DEFAULT                3.5
 #define PARAM_KD_NAME                   "kd"
 #define PARAM_KD_DEFAULT                6.0
 #define PARAM_KP_NEAR_NAME              "kp_near"
-#define PARAM_KP_NEAR_DEFAULT           0.9
+#define PARAM_KP_NEAR_DEFAULT           0.0
 #define PARAM_KI_NAME                   "ki"
 #define PARAM_KI_DEFAULT                0.4
 #define PARAM_KP_FAR_NAME               "kp_far"
-#define PARAM_KP_FAR_DEFAULT            0.1
+#define PARAM_KP_FAR_DEFAULT            0.0
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.1
 #define PARAM_I_THRESHOLD_NAME          "i_threshold"
