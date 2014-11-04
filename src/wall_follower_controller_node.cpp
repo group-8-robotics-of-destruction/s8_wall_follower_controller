@@ -36,6 +36,8 @@
 #define PARAM_I_LIMIT_DEFAULT           0.02
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
 #define PARAM_LINEAR_SPEED_DEFAULT      0.2
+#define PARAM_IR_THRESHOLD_NAME         "ir_threshold"
+#define PARAM_IR_THRESHOLD_DEFAULT      0.2
 
 #define IR_INVALID_VALUE                -1.0
 #define REASON_TIMEOUT                  1
@@ -63,6 +65,7 @@ private:
     double distance;
     double i_threshold;
     double i_limit;
+    double ir_threshold;
 
     double right_prev_diff;
     double left_prev_diff;
@@ -288,7 +291,7 @@ private:
     }
 
     bool is_ir_valid_value(double value) {
-        return value > 0.0;
+        return (value > 0.0) && (value < ir_threshold);
     }
 
     void publish() {
@@ -309,6 +312,7 @@ private:
         add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
         add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
+	add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
     }
 };
 
