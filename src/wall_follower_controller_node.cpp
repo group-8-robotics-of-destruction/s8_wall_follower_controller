@@ -38,6 +38,12 @@
 #define PARAM_LINEAR_SPEED_DEFAULT      0.2
 #define PARAM_IR_THRESHOLD_NAME         "ir_threshold"
 #define PARAM_IR_THRESHOLD_DEFAULT      0.2
+#define PARAM_ALIGNMENT_KP_NAME         "alignment_kp"
+#define PARAM_ALIGNMENT_KP_DEFAULT      4.0
+#define PARAM_ALIGNMENT_KD_NAME         "alignment_kd"
+#define PARAM_ALIGNMENT_KD_DEFAULT      6.0
+#define PARAM_ALIGNMENT_KI_NAME         "alignment_ki"
+#define PARAM_ALIGNMENT_KI_DEFAULT      0.0
 
 #define IR_INVALID_VALUE                -1.0
 #define REASON_TIMEOUT                  1
@@ -66,6 +72,9 @@ private:
     double i_threshold;
     double i_limit;
     double ir_threshold;
+    double alignment_kp;
+    double alignment_kd;
+    double alignment_ki;
 
     double right_prev_diff;
     double left_prev_diff;
@@ -129,7 +138,7 @@ public:
                     double old_kd = kd;
                     kp *= 2;
                     kd *= 2;
-                    controller(back, front, prev_diff, (int)wall_to_follow, 0.0, false);
+                    controller(back, front, prev_diff, (int)wall_to_follow, 0.0, alignment_kp, alignment_kd, alignment_ki, false);
                     kp = old_kp;
                     kd = old_kd;
                 }
@@ -137,7 +146,7 @@ public:
 
             if(!aligning) {
                 ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
-                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed); 
+                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed, kp, kd, ki);
             }
         } else {
             ROS_INFO("Stopped following wall due to invalid ir sensor values. back: %lf, front: %lf", back, front);
@@ -220,14 +229,15 @@ private:
         }
     }
 
-    void controller(double back, double front, double & prev_diff, double away_direction, double v_speed, bool do_distance = true) {
+    void controller(double back, double front, double & prev_diff, double away_direction, double v_speed, double kp, double kd, double ki, bool do_distance = true) {
         double diff = front - back;
         double average = (back + front) / 2;
 
         w = 0.0;
-        p_controller(w, diff);
-        d_controller(w, diff, prev_diff);
+        p_controller(w, diff, kp);
+        d_controller(w, diff, prev_diff, kd);
 
+        // Maybe should change kp_near and kp_far not to be used when aligning?Z
         if(do_distance) {
             double towards_direction = -away_direction;
             double distance_diff = average - distance;
@@ -249,7 +259,7 @@ private:
             }
 
             if(std::abs(diff) < i_threshold) {
-                i_controller(w, distance_diff, sum_errors);
+                i_controller(w, distance_diff, sum_errors, ki);
             } else {
                 sum_errors = 0;
             }
@@ -260,16 +270,16 @@ private:
         ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
     }
 
-    void p_controller(double & w, double diff) {
+    void p_controller(double & w, double diff, double kp) {
         w += -kp * diff;
     }
 
-    void d_controller(double & w, double diff, double & prev_diff) {
+    void d_controller(double & w, double diff, double & prev_diff, double kd) {
         w += -kd * (diff - prev_diff) / 2;
         prev_diff = diff;
     }
 
-    void i_controller(double & w, double diff, double & sum_errors){
+    void i_controller(double & w, double diff, double & sum_errors, double ki){
         sum_errors += diff * (1.0 / HZ);
         w += -ki * sum_errors;
         
@@ -312,7 +322,10 @@ private:
         add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
         add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
-	add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
+        add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KP_NAME, alignment_kp, PARAM_ALIGNMENT_KP_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KD_NAME, alignment_kd, PARAM_ALIGNMENT_KD_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KI_NAME, alignment_ki, PARAM_ALIGNMENT_KI_DEFAULT);
     }
 };
 
