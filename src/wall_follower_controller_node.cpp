@@ -134,13 +134,7 @@ public:
 
                 } else {
                     ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
-                    double old_kp = kp;
-                    double old_kd = kd;
-                    kp *= 2;
-                    kd *= 2;
                     controller(back, front, prev_diff, (int)wall_to_follow, 0.0, alignment_kp, alignment_kd, alignment_ki, false);
-                    kp = old_kp;
-                    kd = old_kd;
                 }
             }
 
