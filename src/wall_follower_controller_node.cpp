@@ -18,14 +18,14 @@
 #define ACTION_STOP                     "/s8_motor_controller/stop"
 #define ACTION_FOLLOW_WALL              "/s8/follow_wall"
 
-#define PARAM_KP_NAME                   "kp"
-#define PARAM_KP_DEFAULT                3.5
-#define PARAM_KD_NAME                   "kd"
-#define PARAM_KD_DEFAULT                6.0
+#define PARAM_FOLLOWING_KP_NAME         "following_kp"
+#define PARAM_FOLLOWING_KP_DEFAULT      3.5
+#define PARAM_FOLLOWING_KD_NAME         "following_kd"
+#define PARAM_FOLLOWING_KD_DEFAULT      6.0
+#define PARAM_FOLLOWING_KI_NAME         "following_ki"
+#define PARAM_FOLLOWING_KI_DEFAULT      0.4
 #define PARAM_KP_NEAR_NAME              "kp_near"
 #define PARAM_KP_NEAR_DEFAULT           0.0
-#define PARAM_KI_NAME                   "ki"
-#define PARAM_KI_DEFAULT                0.4
 #define PARAM_KP_FAR_NAME               "kp_far"
 #define PARAM_KP_FAR_DEFAULT            0.0
 #define PARAM_DISTANCE_NAME             "distance"
@@ -65,13 +65,13 @@ private:
 
     double kp_near;
     double kp_far;
-    double kp;
-    double kd;
-    double ki;
     double distance;
     double i_threshold;
     double i_limit;
     double ir_threshold;
+    double following_kp;
+    double following_kd;
+    double following_ki;
     double alignment_kp;
     double alignment_kd;
     double alignment_ki;
@@ -125,6 +125,7 @@ public:
             if(aligning) {
                 if(is_aligned(back, front)) {
                     stop();
+                    ros::spinOnce();
                     if(is_aligned(back, front)) {
                         aligning = false;
                         ROS_INFO("Alignment complete!");
@@ -140,7 +141,7 @@ public:
 
             if(!aligning) {
                 ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
-                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed, kp, kd, ki);
+                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed, following_kp, following_kd, following_ki);
             }
         } else {
             ROS_INFO("Stopped following wall due to invalid ir sensor values. back: %lf, front: %lf", back, front);
@@ -169,20 +170,18 @@ public:
     
 private:
     bool is_aligned(double back, double front) {
-        return std::abs(std::abs(back) - std::abs(front)) <= 0.015;
+	ROS_INFO("alignment: back: %lf front: %lf diff: %lf", std::abs(back), std::abs(front), std::abs(std::abs(back) - std::abs(front)));
+        return std::abs(std::abs(back) - std::abs(front)) <= 0.01;
     }
 
     void follow_wall_cancel_callback() {
         stop_following();
 
-        s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-        follow_wall_action_result.reason = REASON_PREEMPTED;
-        follow_wall_action.setPreempted(follow_wall_action_result);
-
         ROS_INFO("Cancelling wall following action...");
     }
 
     void stop_following() {
+        aligning = false;
         following = false;
         preempted = true;
         v = 0.0;
@@ -204,9 +203,14 @@ private:
         preempted = false;
         following = true;
         aligning = true;
-        while(following && ticks <= timeout * rate_hz) {
+        while(ros::ok() && following && ticks <= timeout * rate_hz) {
             rate.sleep();
             ticks++;
+        }
+
+        if(!ros::ok()) {
+            ROS_INFO("Ros not OK");
+            return;
         }
 
         if(ticks >= timeout * rate_hz) {
@@ -215,6 +219,10 @@ private:
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
             follow_wall_action_result.reason = REASON_TIMEOUT;
             follow_wall_action.setAborted(follow_wall_action_result);
+        } else if(preempted) {
+            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
+            follow_wall_action_result.reason = REASON_PREEMPTED;
+            follow_wall_action.setPreempted(follow_wall_action_result);        
         } else if(!preempted) {
             stop_following();
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
@@ -261,7 +269,7 @@ private:
 
         v = v_speed;
 
-        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", right_back, right_front, diff, w);
+        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", back, front, diff, w);
     }
 
     void p_controller(double & w, double diff, double kp) {
@@ -292,6 +300,10 @@ private:
         left_back = ir_distances->left_back;
         right_front = ir_distances->right_front;
         right_back = ir_distances->right_back;
+    
+        if(aligning) {
+            ROS_INFO("Ir updated");
+        }
     }
 
     bool is_ir_valid_value(double value) {
@@ -307,11 +319,11 @@ private:
     }
 
     void init_params() {
-        add_param(PARAM_KP_NAME, kp, PARAM_KP_DEFAULT);
-        add_param(PARAM_KD_NAME, kd, PARAM_KD_DEFAULT);
+        add_param(PARAM_FOLLOWING_KP_NAME, following_kp, PARAM_FOLLOWING_KP_DEFAULT);
+        add_param(PARAM_FOLLOWING_KD_NAME, following_kd, PARAM_FOLLOWING_KD_DEFAULT);
+        add_param(PARAM_FOLLOWING_KI_NAME, following_ki, PARAM_FOLLOWING_KI_DEFAULT);
         add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
         add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
-        add_param(PARAM_KI_NAME, ki, PARAM_KI_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
         add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
         add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
