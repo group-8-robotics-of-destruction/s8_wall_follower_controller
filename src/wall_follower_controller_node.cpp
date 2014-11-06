@@ -94,14 +94,15 @@ private:
     bool preempted;
 
     bool aligning;
+    int alignment_streak;
 
 public:
-    WallFollower() : v(0.0), w(0.0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    WallFollower() : v(0.0), w(0.0), alignment_streak(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
-        ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1000, &WallFollower::ir_distances_callback, this);
-        twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1000);
+        ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1, &WallFollower::ir_distances_callback, this);
+        twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1);
         
         follow_wall_action.registerPreemptCallback(boost::bind(&WallFollower::follow_wall_cancel_callback, this));
 
@@ -124,16 +125,19 @@ public:
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
             if(aligning) {
                 if(is_aligned(back, front)) {
-                    stop();
-                    ros::spinOnce();
-                    if(is_aligned(back, front)) {
+                    if(alignment_streak == 1) {
+                        ROS_INFO("Seconds alignment check");
                         aligning = false;
                         ROS_INFO("Alignment complete!");
                         v = 0.0;
                         w = 0.0;
+                    } else {
+                        ROS_INFO("First alignment check");
+                        stop();
+                        alignment_streak++;
                     }
-
                 } else {
+                    alignment_streak = 0;
                     ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
                     controller(back, front, prev_diff, (int)wall_to_follow, 0.0, alignment_kp, alignment_kd, alignment_ki, false);
                 }
@@ -203,6 +207,7 @@ private:
         preempted = false;
         following = true;
         aligning = true;
+        alignment_streak = 0;
         while(ros::ok() && following && ticks <= timeout * rate_hz) {
             rate.sleep();
             ticks++;
@@ -269,7 +274,7 @@ private:
 
         v = v_speed;
 
-        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, w: %.2lf", back, front, diff, w);
+        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, prev_diff, w);
     }
 
     void p_controller(double & w, double diff, double kp) {
@@ -302,7 +307,7 @@ private:
         right_back = ir_distances->right_back;
     
         if(aligning) {
-            ROS_INFO("Ir updated");
+            ROS_INFO("Ir updated right_back: %lf right_front: %lf", right_back, right_front);
         }
     }
 
