@@ -25,9 +25,9 @@
 #define PARAM_FOLLOWING_KI_NAME         "following_ki"
 #define PARAM_FOLLOWING_KI_DEFAULT      0.4
 #define PARAM_KP_NEAR_NAME              "kp_near"
-#define PARAM_KP_NEAR_DEFAULT           0.0
+#define PARAM_KP_NEAR_DEFAULT           0.9
 #define PARAM_KP_FAR_NAME               "kp_far"
-#define PARAM_KP_FAR_DEFAULT            0.0
+#define PARAM_KP_FAR_DEFAULT            0.1
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.1
 #define PARAM_I_THRESHOLD_NAME          "i_threshold"
@@ -237,7 +237,9 @@ private:
     }
 
     void controller(double back, double front, double & prev_diff, double away_direction, double v_speed, double kp, double kd, double ki, bool do_distance = true) {
-        double diff = front - back;
+        double towards_direction = -away_direction;
+       
+        double diff = away_direction * (front - back);
         double average = (back + front) / 2;
 
         w = 0.0;
@@ -246,9 +248,8 @@ private:
 
         // Maybe should change kp_near and kp_far not to be used when aligning?Z
         if(do_distance) {
-            double towards_direction = -away_direction;
             double distance_diff = average - distance;
-            
+
             if(distance_diff < 0) {
                 // if too close to the wall, turn away fast.
                 w += -away_direction * kp_near * distance_diff;
@@ -270,6 +271,8 @@ private:
             } else {
                 sum_errors = 0;
             }
+
+            ROS_INFO("distance: %lf diff: %lf, added w: %lf", average, distance_diff, -away_direction * kp_near * distance_diff);
         }
 
         v = v_speed;
@@ -318,7 +321,7 @@ private:
     void publish() {
         geometry_msgs::Twist twist;
         twist.linear.x = v;
-        twist.angular.z = wall_to_follow * w;
+        twist.angular.z = w;
 
         twist_publisher.publish(twist);
     }
