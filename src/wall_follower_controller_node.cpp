@@ -136,6 +136,7 @@ public:
                         stop();
                         alignment_streak++;
                     }
+                    sum_errors = 0;
                 } else {
                     alignment_streak = 0;
                     ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
@@ -207,6 +208,7 @@ private:
         preempted = false;
         following = true;
         aligning = true;
+        sum_errors = 0;
         alignment_streak = 0;
         while(ros::ok() && following && ticks <= timeout * rate_hz) {
             rate.sleep();
@@ -273,6 +275,9 @@ private:
             }
 
             ROS_INFO("distance: %lf diff: %lf, added w: %lf", average, distance_diff, -away_direction * kp_near * distance_diff);
+        }
+        else {
+        	i_controller(w, diff, sum_errors, ki);
         }
 
         v = v_speed;
