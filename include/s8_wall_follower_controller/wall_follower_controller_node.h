@@ -21,8 +21,8 @@ namespace s8 {
         };
 
         enum WallToFollow {
-            LEFT = -1,
-            RIGHT = 1
+            LEFT = s8::motor_controller_node::RotationDirection::LEFT,
+            RIGHT = s8::motor_controller_node::RotationDirection::RIGHT
         };
 
         std::string to_string(WallToFollow wall_to_follow) {

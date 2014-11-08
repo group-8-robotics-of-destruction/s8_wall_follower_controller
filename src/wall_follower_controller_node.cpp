@@ -222,8 +222,8 @@ private:
         return away_direction * (back - front);
     }
 
-    void follow_controller(double back, double front, int away_direction, bool do_distance = true) {
-        double towards_direction = -away_direction;
+    void follow_controller(double back, double front, int towards_direction, bool do_distance = true) {
+        double away_direction = -towards_direction;
 
         double diff = get_controller_diff(back, front, away_direction);
         double average = (back + front) / 2;
@@ -256,7 +256,8 @@ private:
         ROS_INFO("Follow controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, follow_pid.get_prev_error(), w);
     }
 
-    void align_controller(double back, double front, int away_direction) {
+    void align_controller(double back, double front, int towards_direction) {
+        double away_direction = -towards_direction;
         double diff = get_controller_diff(back, front, away_direction);
         align_pid.update(w, diff);
         v = 0.0;
