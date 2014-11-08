@@ -1,22 +1,17 @@
+#include <ros/ros.h>
 #include <cmath>
 
-#include <ros/ros.h>
+#include <s8_common_node/Node.h>
+#include <s8_wall_follower_controller/wall_follower_controller_node.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/server/simple_action_server.h>
-#include <s8_common_node/Node.h>
 
 #include <geometry_msgs/Twist.h>
 #include <s8_msgs/IRDistances.h>
 #include <s8_motor_controller/StopAction.h>
 #include <s8_wall_follower_controller/FollowWallAction.h>
 
-#define NODE_NAME                       "s8_wall_follower_controller_node"
 #define HZ                              10
-
-#define TOPIC_TWIST                     "/s8/twist"
-#define TOPIC_IR_DISTANCES              "/s8/ir_distances"
-#define ACTION_STOP                     "/s8_motor_controller/stop"
-#define ACTION_FOLLOW_WALL              "/s8/follow_wall"
 
 #define PARAM_FOLLOWING_KP_NAME         "following_kp"
 #define PARAM_FOLLOWING_KP_DEFAULT      3.5
@@ -45,19 +40,12 @@
 #define PARAM_ALIGNMENT_KI_NAME         "alignment_ki"
 #define PARAM_ALIGNMENT_KI_DEFAULT      0.0
 
-#define IR_INVALID_VALUE                -1.0
-#define REASON_TIMEOUT                  1
-#define REASON_OUT_OF_RANGE             1 << 1
-#define REASON_PREEMPTED                1 << 2
+using namespace s8;
+using namespace s8::wall_follower_controller_node;
 
-class WallFollower : public s8::Node {
-public:
-    enum FollowWall {
-        LEFT = -1,
-        RIGHT = 1
-    };
+#define IR_INVALID_VALUE ir_sensors_node::TRESHOLD_VALUE
 
-private:
+class WallFollower : public Node {
     ros::Subscriber ir_distances_subscriber;
     ros::Publisher twist_publisher;
     actionlib::SimpleActionServer<s8_wall_follower_controller::FollowWallAction> follow_wall_action;
@@ -89,7 +77,7 @@ private:
     double w;
     double linear_speed;
 
-    FollowWall wall_to_follow;
+    WallToFollow wall_to_follow;
     bool following;
     bool preempted;
 
@@ -118,9 +106,9 @@ public:
             return;
         }
 
-        double back = wall_to_follow == WallFollower::LEFT ? left_back : right_back;
-        double front = wall_to_follow == WallFollower::LEFT ? left_front : right_front;
-        double prev_diff = wall_to_follow == WallFollower::LEFT ? left_prev_diff : right_prev_diff;
+        double back = wall_to_follow == WallToFollow::LEFT ? left_back : right_back;
+        double front = wall_to_follow == WallToFollow::LEFT ? left_front : right_front;
+        double prev_diff = wall_to_follow == WallToFollow::LEFT ? left_prev_diff : right_prev_diff;
 
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
             if(aligning) {
@@ -138,13 +126,13 @@ public:
                     }
                 } else {
                     alignment_streak = 0;
-                    ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                    ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", to_string(wall_to_follow).c_str(), back, front);
                     controller(back, front, prev_diff, (int)wall_to_follow, 0.0, alignment_kp, alignment_kd, alignment_ki, false);
                 }
             }
 
             if(!aligning) {
-                ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
+                ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", to_string(wall_to_follow).c_str(), back, front);
                 controller(back, front, prev_diff, (int)wall_to_follow, linear_speed, following_kp, following_kd, following_ki);
             }
         } else {
@@ -193,7 +181,7 @@ private:
     }
 
     void action_execute_follow_wall_callback(const s8_wall_follower_controller::FollowWallGoalConstPtr & goal) {
-        wall_to_follow = FollowWall(goal->wall_to_follow);
+        wall_to_follow = WallToFollow(goal->wall_to_follow);
 
         const int timeout = 30; // 30 seconds.
         const int rate_hz = 10;
@@ -202,7 +190,7 @@ private:
 
         int ticks = 0;
 
-        ROS_INFO("Wall following action started. Wall to follow: %s", wall_to_follow == WallFollower::LEFT ? "left" : "right");
+        ROS_INFO("Wall following action started. Wall to follow: %s", to_string(wall_to_follow).c_str());
 
         preempted = false;
         following = true;
@@ -222,16 +210,16 @@ private:
             ROS_WARN("Wall following action timed out.");
             stop_following();
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = REASON_TIMEOUT;
+            follow_wall_action_result.reason = FollowWallFinishedReason::TIMEOUT;
             follow_wall_action.setAborted(follow_wall_action_result);
         } else if(preempted) {
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = REASON_PREEMPTED;
+            follow_wall_action_result.reason = FollowWallFinishedReason::PREEMPTED;
             follow_wall_action.setPreempted(follow_wall_action_result);        
         } else if(!preempted) {
             stop_following();
             s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = REASON_OUT_OF_RANGE;
+            follow_wall_action_result.reason = FollowWallFinishedReason::OUT_OF_RANGE;
             follow_wall_action.setSucceeded(follow_wall_action_result);
         }
     }
@@ -315,7 +303,7 @@ private:
     }
 
     bool is_ir_valid_value(double value) {
-        return (value > 0.0) && (value < ir_threshold);
+        return ir_sensors_node::is_valid_ir_value(value) && value < ir_threshold;
     }
 
     void publish() {
