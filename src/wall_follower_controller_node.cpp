@@ -3,6 +3,7 @@
 
 #include <s8_common_node/Node.h>
 #include <s8_wall_follower_controller/wall_follower_controller_node.h>
+#include <s8_pid/PIDController.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/server/simple_action_server.h>
 
@@ -42,6 +43,7 @@
 
 using namespace s8;
 using namespace s8::wall_follower_controller_node;
+using namespace s8::pid;
 
 #define IR_INVALID_VALUE ir_sensors_node::TRESHOLD_VALUE
 
@@ -57,16 +59,8 @@ class WallFollower : public Node {
     double i_threshold;
     double i_limit;
     double ir_threshold;
-    double following_kp;
-    double following_kd;
-    double following_ki;
-    double alignment_kp;
-    double alignment_kd;
-    double alignment_ki;
-
-    double right_prev_diff;
-    double left_prev_diff;
-    double sum_errors;
+    PIDController follow_pid;
+    PIDController align_pid;
 
     double left_front;
     double left_back;
@@ -85,7 +79,7 @@ class WallFollower : public Node {
     int alignment_streak;
 
 public:
-    WallFollower() : v(0.0), w(0.0), alignment_streak(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    WallFollower(int hz) : follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
@@ -108,7 +102,6 @@ public:
 
         double back = wall_to_follow == WallToFollow::LEFT ? left_back : right_back;
         double front = wall_to_follow == WallToFollow::LEFT ? left_front : right_front;
-        double prev_diff = wall_to_follow == WallToFollow::LEFT ? left_prev_diff : right_prev_diff;
 
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
             if(aligning) {
@@ -126,14 +119,12 @@ public:
                     }
                 } else {
                     alignment_streak = 0;
-                    ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", to_string(wall_to_follow).c_str(), back, front);
-                    controller(back, front, prev_diff, (int)wall_to_follow, 0.0, alignment_kp, alignment_kd, alignment_ki, false);
+                    align_controller(back, front, wall_to_follow);
                 }
             }
 
             if(!aligning) {
-                ROS_INFO("Following %s wall... back: %.2lf, front: %.2lf", to_string(wall_to_follow).c_str(), back, front);
-                controller(back, front, prev_diff, (int)wall_to_follow, linear_speed, following_kp, following_kd, following_ki);
+                follow_controller(back, front, wall_to_follow);
             }
         } else {
             ROS_INFO("Stopped following wall due to invalid ir sensor values. back: %lf, front: %lf", back, front);
@@ -162,7 +153,7 @@ public:
     
 private:
     bool is_aligned(double back, double front) {
-	ROS_INFO("alignment: back: %lf front: %lf diff: %lf", std::abs(back), std::abs(front), std::abs(std::abs(back) - std::abs(front)));
+        ROS_INFO("alignment: back: %lf front: %lf diff: %lf", std::abs(back), std::abs(front), std::abs(std::abs(back) - std::abs(front)));
         return std::abs(std::abs(back) - std::abs(front)) <= 0.01;
     }
 
@@ -191,6 +182,9 @@ private:
         int ticks = 0;
 
         ROS_INFO("Wall following action started. Wall to follow: %s", to_string(wall_to_follow).c_str());
+
+        follow_pid.reset();
+        align_pid.reset();
 
         preempted = false;
         following = true;
@@ -224,71 +218,49 @@ private:
         }
     }
 
-    void controller(double back, double front, double & prev_diff, double away_direction, double v_speed, double kp, double kd, double ki, bool do_distance = true) {
+    double get_controller_diff(double back, double front, int away_direction) {
+        return away_direction * (back - front);
+    }
+
+    void follow_controller(double back, double front, int away_direction, bool do_distance = true) {
         double towards_direction = -away_direction;
-       
-        double diff = away_direction * (front - back);
+
+        double diff = get_controller_diff(back, front, away_direction);
         double average = (back + front) / 2;
 
-        w = 0.0;
-        p_controller(w, diff, kp);
-        d_controller(w, diff, prev_diff, kd);
+        follow_pid.update(w, diff);
+
+        v = linear_speed;
 
         // Maybe should change kp_near and kp_far not to be used when aligning?Z
         if(do_distance) {
-            double distance_diff = average - distance;
+            double distance_diff = distance - average;
 
             if(distance_diff < 0) {
                 // if too close to the wall, turn away fast.
-                w += -away_direction * kp_near * distance_diff;
+                w += away_direction * kp_near * distance_diff;
             } else {
                 //if too far away to the wall, turn towards slowly
-                double w_temp = -towards_direction * kp_far * distance_diff;
+                double w_temp = towards_direction * kp_far * distance_diff;
 
                 double towards_treshold = towards_direction * 0.2;
 
-                if(std::abs((double)w_temp) > std::abs((double)towards_treshold)) {
+                if(std::abs(w_temp) > std::abs(towards_treshold)) {
                     w_temp = towards_treshold;
                 }
 
-                w -= w_temp;
+                w -= w_temp; //TODO: Shouldn't this be +=?
             }
-
-            if(std::abs(diff) < i_threshold) {
-                i_controller(w, distance_diff, sum_errors, ki);
-            } else {
-                sum_errors = 0;
-            }
-
-            ROS_INFO("distance: %lf diff: %lf, added w: %lf", average, distance_diff, -away_direction * kp_near * distance_diff);
         }
 
-        v = v_speed;
-
-        ROS_INFO("Controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, prev_diff, w);
+        ROS_INFO("Follow controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, follow_pid.get_prev_error(), w);
     }
 
-    void p_controller(double & w, double diff, double kp) {
-        w += -kp * diff;
-    }
-
-    void d_controller(double & w, double diff, double & prev_diff, double kd) {
-        w += -kd * (diff - prev_diff) / 2;
-        prev_diff = diff;
-    }
-
-    void i_controller(double & w, double diff, double & sum_errors, double ki){
-        sum_errors += diff * (1.0 / HZ);
-        w += -ki * sum_errors;
-        
-        // thresholding, tochange
-        if (sum_errors > i_limit) {
-            sum_errors = i_limit;
-        } else if (sum_errors < -i_limit) {
-            sum_errors = -i_limit;
-        }
-        
-        ROS_INFO("error_diff: %lf, i: %lf", diff*(1.0/HZ), -ki*sum_errors);
+    void align_controller(double back, double front, int away_direction) {
+        double diff = get_controller_diff(back, front, away_direction);
+        align_pid.update(w, diff);
+        v = 0.0;
+        ROS_INFO("Alignment controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, align_pid.get_prev_error(), w);
     }
 
     void ir_distances_callback(const s8_msgs::IRDistances::ConstPtr & ir_distances) {
@@ -315,9 +287,9 @@ private:
     }
 
     void init_params() {
-        add_param(PARAM_FOLLOWING_KP_NAME, following_kp, PARAM_FOLLOWING_KP_DEFAULT);
-        add_param(PARAM_FOLLOWING_KD_NAME, following_kd, PARAM_FOLLOWING_KD_DEFAULT);
-        add_param(PARAM_FOLLOWING_KI_NAME, following_ki, PARAM_FOLLOWING_KI_DEFAULT);
+        add_param(PARAM_FOLLOWING_KP_NAME, follow_pid.kp, PARAM_FOLLOWING_KP_DEFAULT);
+        add_param(PARAM_FOLLOWING_KD_NAME, follow_pid.kd, PARAM_FOLLOWING_KD_DEFAULT);
+        add_param(PARAM_FOLLOWING_KI_NAME, follow_pid.ki, PARAM_FOLLOWING_KI_DEFAULT);
         add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
         add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
@@ -325,16 +297,16 @@ private:
         add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
         add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
-        add_param(PARAM_ALIGNMENT_KP_NAME, alignment_kp, PARAM_ALIGNMENT_KP_DEFAULT);
-        add_param(PARAM_ALIGNMENT_KD_NAME, alignment_kd, PARAM_ALIGNMENT_KD_DEFAULT);
-        add_param(PARAM_ALIGNMENT_KI_NAME, alignment_ki, PARAM_ALIGNMENT_KI_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KP_NAME, align_pid.kp, PARAM_ALIGNMENT_KP_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KD_NAME, align_pid.kd, PARAM_ALIGNMENT_KD_DEFAULT);
+        add_param(PARAM_ALIGNMENT_KI_NAME, align_pid.ki, PARAM_ALIGNMENT_KI_DEFAULT);
     }
 };
 
 int main(int argc, char **argv) {
     ros::init(argc, argv, NODE_NAME);
 
-    WallFollower wall_follower;
+    WallFollower wall_follower(HZ);
 
     ros::Rate loop_rate(HZ);
 
