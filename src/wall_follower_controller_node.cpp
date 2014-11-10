@@ -95,9 +95,10 @@ private:
 
     bool aligning;
     int alignment_streak;
+    int alignment_angle;
 
 public:
-    WallFollower() : v(0.0), w(0.0), alignment_streak(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    WallFollower() : v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), right_prev_diff(0.0), left_prev_diff(0.0), sum_errors(0.0), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
@@ -121,9 +122,22 @@ public:
         double back = wall_to_follow == WallFollower::LEFT ? left_back : right_back;
         double front = wall_to_follow == WallFollower::LEFT ? left_front : right_front;
         double prev_diff = wall_to_follow == WallFollower::LEFT ? left_prev_diff : right_prev_diff;
+    
+        auto get_alignment_angle = [&back, &front]() {
+            return back - front >= 0 ? 1 : -1;
+        };
 
         if(is_ir_valid_value(back) && is_ir_valid_value(front)) {
             if(aligning) {
+                if(alignment_angle != 0) {
+                    if(alignment_angle != get_alignment_angle()) {
+                        ROS_INFO("Alignment angle sign changed.");
+                        sum_errors = 0;
+                    }
+                }
+
+                alignment_angle = get_alignment_angle();
+
                 if(is_aligned(back, front)) {
                     if(alignment_streak == 1) {
                         ROS_INFO("Seconds alignment check");
@@ -136,7 +150,6 @@ public:
                         stop();
                         alignment_streak++;
                     }
-                    sum_errors = 0;
                 } else {
                     alignment_streak = 0;
                     ROS_INFO("Aligning %s wall... back: %.3lf, front: %.3lf", wall_to_follow == WallFollower::LEFT ? "left" : "right", back, front);
@@ -210,6 +223,7 @@ private:
         aligning = true;
         sum_errors = 0;
         alignment_streak = 0;
+        alignment_angle = 0;
         while(ros::ok() && following && ticks <= timeout * rate_hz) {
             rate.sleep();
             ticks++;
@@ -299,11 +313,11 @@ private:
         w += -ki * sum_errors;
         
         // thresholding, tochange
-        if (sum_errors > i_limit) {
+        /*if (sum_errors > i_limit) {
             sum_errors = i_limit;
         } else if (sum_errors < -i_limit) {
             sum_errors = -i_limit;
-        }
+        }*/
         
         ROS_INFO("error_diff: %lf, i: %lf", diff*(1.0/HZ), -ki*sum_errors);
     }
