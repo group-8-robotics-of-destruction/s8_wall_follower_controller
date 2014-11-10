@@ -263,7 +263,7 @@ private:
                 ROS_INFO("too close to wall");
             } else if(distance_diff < 0) {
                 //if too far away to the wall, turn towards slowly
-                double w_temp = towards_direction * kp_far * distance_diff;
+                double w_temp = towards_direction * kp_far * -distance_diff;
 
                 double towards_treshold = towards_direction * 0.2;
 
@@ -271,8 +271,8 @@ private:
                     w_temp = towards_treshold;
                 }
 
-                w -= w_temp; //TODO: Shouldn't this be +=?
-                ROS_INFO("too far away from wall");
+                w += w_temp; //TODO: Shouldn't this be +=?
+                ROS_INFO("too far away from wall! w_temp: %lf", w_temp);
             }
 
             ROS_INFO("distance_diff: %.2lf away_direction: %d", distance_diff, away_direction);
