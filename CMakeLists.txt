@@ -3,7 +3,7 @@ set(CMAKE_CXX_FLAGS "-std=c++0x ${CMAKE_CXX_FLAGS}")
 cmake_minimum_required(VERSION 2.8.3)
 project(s8_wall_follower_controller)
 
-find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs s8_msgs s8_common_node s8_motor_controller actionlib actionlib_msgs)
+find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs s8_msgs s8_common_node s8_motor_controller s8_ir_sensors s8_utils actionlib actionlib_msgs)
 find_package(Boost REQUIRED COMPONENTS system)
 
 add_action_files(
@@ -17,11 +17,12 @@ generate_messages(
 
 catkin_package(
   DEPENDS
-  CATKIN_DEPENDS roscpp s8_msgs geometry_msgs s8_common_node s8_motor_controller actionlib_msgs actionlib
+  CATKIN_DEPENDS roscpp s8_msgs geometry_msgs s8_common_node s8_motor_controller s8_ir_sensors s8_utils actionlib_msgs actionlib
+  INCLUDE_DIRS include
 )
 
 include_directories(
-  # include
+  include
   ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS}
 )
 
