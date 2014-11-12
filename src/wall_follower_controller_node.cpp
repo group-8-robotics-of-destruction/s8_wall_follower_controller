@@ -41,6 +41,8 @@
 #define PARAM_ALIGNMENT_KD_DEFAULT      0.3
 #define PARAM_ALIGNMENT_KI_NAME         "alignment_ki"
 #define PARAM_ALIGNMENT_KI_DEFAULT      0.0
+#define PARAM_ALIGNMENT_SPEED_NAME      "alignment_speed"
+#define PARAM_ALIGNMENT_SPEED_DEFAULT   0.5
 
 using namespace s8;
 using namespace s8::wall_follower_controller_node;
@@ -80,6 +82,7 @@ class WallFollower : public Node {
     bool aligning;
     int alignment_streak;
     int alignment_angle;
+    double alignment_speed;
 
 public:
     WallFollower(int hz) : follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
@@ -171,7 +174,7 @@ public:
     
 private:
     bool is_aligned(double back, double front) {
-        return std::abs(std::abs(back) - std::abs(front)) <= 0.01;
+        return std::abs(std::abs(back) - std::abs(front)) <= 0.02;
     }
 
     void follow_wall_cancel_callback() {
@@ -257,25 +260,27 @@ private:
         if(do_distance) {
             double distance_diff = distance - average;
 
-            if(distance_diff > 0) {
-                // if too close to the wall, turn away fast.
-                w += away_direction * kp_near * distance_diff;
-                ROS_INFO("too close to wall");
-            } else if(distance_diff < 0) {
-                //if too far away to the wall, turn towards slowly
-                double w_temp = towards_direction * kp_far * -distance_diff;
+            if(std::abs(distance_diff) >= 0.01) {
+                if(distance_diff > 0) {
+                    // if too close to the wall, turn away fast.
+                    w += away_direction * kp_near * distance_diff;
+                    ROS_INFO("too close to wall");
+                } else if(distance_diff < 0) {
+                    //if too far away to the wall, turn towards slowly
+                    double w_temp = towards_direction * kp_far * -distance_diff;
 
-                double towards_treshold = towards_direction * 0.2;
+                    double towards_treshold = towards_direction * 0.2;
 
-                if(std::abs(w_temp) > std::abs(towards_treshold)) {
-                    w_temp = towards_treshold;
+                    if(std::abs(w_temp) > std::abs(towards_treshold)) {
+                        w_temp = towards_treshold;
+                    }
+
+                    w += w_temp; //TODO: Shouldn't this be +=?
+                    ROS_INFO("too far away from wall! w_temp: %lf", w_temp);
                 }
 
-                w += w_temp; //TODO: Shouldn't this be +=?
-                ROS_INFO("too far away from wall! w_temp: %lf", w_temp);
+                ROS_INFO("distance_diff: %.2lf away_direction: %d", distance_diff, away_direction);
             }
-
-            ROS_INFO("distance_diff: %.2lf away_direction: %d", distance_diff, away_direction);
         }
 
         ROS_INFO("Follow controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, follow_pid.get_prev_error(), w);
@@ -284,7 +289,7 @@ private:
     void align_controller(double back, double front, int towards_direction) {
         double away_direction = -towards_direction;
         double diff = get_controller_diff(back, front, away_direction);
-        w = sign(diff) * 0.3;
+        w = sign(diff) * alignment_speed;
         //align_pid.update(w, diff);
         v = 0.0;
         ROS_INFO("Alignment controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf, towards: %d", back, front, diff, align_pid.get_prev_error(), w, towards_direction);
@@ -323,6 +328,7 @@ private:
         add_param(PARAM_ALIGNMENT_KP_NAME, align_pid.kp, PARAM_ALIGNMENT_KP_DEFAULT);
         add_param(PARAM_ALIGNMENT_KD_NAME, align_pid.kd, PARAM_ALIGNMENT_KD_DEFAULT);
         add_param(PARAM_ALIGNMENT_KI_NAME, align_pid.ki, PARAM_ALIGNMENT_KI_DEFAULT);
+        add_param(PARAM_ALIGNMENT_SPEED_NAME, alignment_speed, PARAM_ALIGNMENT_SPEED_DEFAULT);
     }
 };
 
