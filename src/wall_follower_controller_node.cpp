@@ -27,10 +27,6 @@
 #define PARAM_KP_FAR_DEFAULT            0.75
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.1
-#define PARAM_I_THRESHOLD_NAME          "i_threshold"
-#define PARAM_I_THRESHOLD_DEFAULT       0.02
-#define PARAM_I_LIMIT_NAME              "i_limit"
-#define PARAM_I_LIMIT_DEFAULT           0.02
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
 #define PARAM_LINEAR_SPEED_DEFAULT      0.2
 #define PARAM_IR_THRESHOLD_NAME         "ir_threshold"
@@ -60,8 +56,6 @@ class WallFollower : public Node {
     double kp_near;
     double kp_far;
     double distance;
-    double i_threshold;
-    double i_limit;
     double ir_threshold;
     PIDController follow_pid;
     PIDController align_pid;
@@ -321,8 +315,6 @@ private:
         add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
         add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
-        add_param(PARAM_I_THRESHOLD_NAME, i_threshold, PARAM_I_THRESHOLD_DEFAULT);
-        add_param(PARAM_I_LIMIT_NAME, i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
         add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
         add_param(PARAM_ALIGNMENT_KP_NAME, align_pid.kp, PARAM_ALIGNMENT_KP_DEFAULT);
