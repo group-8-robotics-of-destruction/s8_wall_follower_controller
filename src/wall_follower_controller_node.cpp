@@ -21,10 +21,14 @@
 #define PARAM_FOLLOWING_KD_DEFAULT      1.5
 #define PARAM_FOLLOWING_KI_NAME         "following_ki"
 #define PARAM_FOLLOWING_KI_DEFAULT      0.0
-#define PARAM_KP_NEAR_NAME              "kp_near"
-#define PARAM_KP_NEAR_DEFAULT           2.5
-#define PARAM_KP_FAR_NAME               "kp_far"
-#define PARAM_KP_FAR_DEFAULT            0.5
+#define PARAM_DISTANCE_KI_NAME          "distance_ki"
+#define PARAM_DISTANCE_KI_DEFAULT       0.0
+#define PARAM_DISTANCE_KP_NAME          "distance_kp"
+#define PARAM_DISTANCE_KP_DEFAULT       2.5
+#define PARAM_DISTANCE_KD_NAME		"distance_kd"
+#define PARAM_DISTANCE_KD_DEFAULT	0.0
+#define PARAM_I_LIMIT_NAME		"i_limit"
+#define PARAM_I_LIMIT_DEFAULT		0.5
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.09
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
@@ -53,12 +57,11 @@ class WallFollower : public Node {
     actionlib::SimpleActionServer<s8_wall_follower_controller::FollowWallAction> follow_wall_action;
     actionlib::SimpleActionClient<s8_motor_controller::StopAction> stop_action;
 
-    double kp_near;
-    double kp_far;
     double distance;
     double ir_threshold;
     PIDController follow_pid;
     PIDController align_pid;
+    PIDController distance_pid;
 
     double left_front;
     double left_back;
@@ -79,7 +82,7 @@ class WallFollower : public Node {
     double alignment_speed;
 
 public:
-    WallFollower(int hz) : follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    WallFollower(int hz) : distance_pid (hz), follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
         print_params();
 
@@ -198,6 +201,7 @@ private:
         ROS_INFO("Wall following action started. Wall to follow: %s", to_string(wall_to_follow).c_str());
 
         follow_pid.reset();
+	distance_pid.reset();
         align_pid.reset();
 
         preempted = false;
@@ -253,31 +257,26 @@ private:
         // Maybe should change kp_near and kp_far not to be used when aligning?Z
         if(do_distance) {
             double distance_diff = distance - average;
-
-            if(std::abs(distance_diff) >= 0.01) {
-                if(distance_diff > 0) {
-                    // if too close to the wall, turn away fast.
-                    w += away_direction * kp_near * distance_diff;
-                    ROS_INFO("too close to wall");
-                } else if(distance_diff < 0) {
-                    //if too far away to the wall, turn towards slowly
-                    double w_temp = towards_direction * kp_far * -distance_diff;
-
-                    double towards_treshold = towards_direction * 0.2;
-
-                    if(std::abs(w_temp) > std::abs(towards_treshold)) {
-                        w_temp = towards_treshold;
-                    }
-
-                    w += w_temp; //TODO: Shouldn't this be +=?
-                    ROS_INFO("too far away from wall! w_temp: %lf", w_temp);
-                }
-
-                ROS_INFO("distance_diff: %.2lf away_direction: %d", distance_diff, away_direction);
-            }
+            distance_controller(distance_diff, towards_direction);
         }
 
         ROS_INFO("Follow controller back: %.2lf, front: %.2lf, diff %lf, prev_diff: %.2lf, w: %.2lf", back, front, diff, follow_pid.get_prev_error(), w);
+    }
+
+    void distance_controller(double distance_diff, int towards_direction){
+        int away_direction = -towards_direction;
+        double diff = distance_diff * away_direction;
+	// Add back the kp_far and near difference perhaps?
+	if (distance_diff < 0) {
+		int old_kp = distance_pid.kp;
+		distance_pid.kp /= 5;
+		distance_pid.update(w,diff);
+		distance_pid.kp = old_kp;
+	}
+	else {
+		distance_pid.update(w, diff);
+	}
+	ROS_INFO("distance difference: %lf",  diff);
     }
 
     void align_controller(double back, double front, int towards_direction) {
@@ -312,8 +311,10 @@ private:
         add_param(PARAM_FOLLOWING_KP_NAME, follow_pid.kp, PARAM_FOLLOWING_KP_DEFAULT);
         add_param(PARAM_FOLLOWING_KD_NAME, follow_pid.kd, PARAM_FOLLOWING_KD_DEFAULT);
         add_param(PARAM_FOLLOWING_KI_NAME, follow_pid.ki, PARAM_FOLLOWING_KI_DEFAULT);
-        add_param(PARAM_KP_NEAR_NAME, kp_near, PARAM_KP_NEAR_DEFAULT);
-        add_param(PARAM_KP_FAR_NAME, kp_far, PARAM_KP_FAR_DEFAULT);
+        add_param(PARAM_DISTANCE_KI_NAME, distance_pid.ki, PARAM_DISTANCE_KI_DEFAULT);
+        add_param(PARAM_DISTANCE_KP_NAME, distance_pid.kp, PARAM_DISTANCE_KP_DEFAULT);
+	add_param(PARAM_DISTANCE_KD_NAME, distance_pid.kd, PARAM_DISTANCE_KD_DEFAULT);
+	add_param(PARAM_I_LIMIT_NAME, distance_pid.i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
         add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
