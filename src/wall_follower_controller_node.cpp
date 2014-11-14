@@ -13,7 +13,7 @@
 #include <s8_motor_controller/StopAction.h>
 #include <s8_wall_follower_controller/FollowWallAction.h>
 
-#define HZ                              10
+#define HZ                              50
 
 #define PARAM_FOLLOWING_KP_NAME         "following_kp"
 #define PARAM_FOLLOWING_KP_DEFAULT      3.5
