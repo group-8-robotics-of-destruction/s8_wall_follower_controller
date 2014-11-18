@@ -16,17 +16,17 @@
 #define HZ                              10
 
 #define PARAM_FOLLOWING_KP_NAME         "following_kp"
-#define PARAM_FOLLOWING_KP_DEFAULT      3.5
+#define PARAM_FOLLOWING_KP_DEFAULT      10.0
 #define PARAM_FOLLOWING_KD_NAME         "following_kd"
-#define PARAM_FOLLOWING_KD_DEFAULT      1.5
+#define PARAM_FOLLOWING_KD_DEFAULT      4.0
 #define PARAM_FOLLOWING_KI_NAME         "following_ki"
 #define PARAM_FOLLOWING_KI_DEFAULT      0.0
 #define PARAM_DISTANCE_KI_NAME          "distance_ki"
 #define PARAM_DISTANCE_KI_DEFAULT       0.0
 #define PARAM_DISTANCE_KP_NAME          "distance_kp"
-#define PARAM_DISTANCE_KP_DEFAULT       2.5
+#define PARAM_DISTANCE_KP_DEFAULT       10.0
 #define PARAM_DISTANCE_KD_NAME		"distance_kd"
-#define PARAM_DISTANCE_KD_DEFAULT	0.0
+#define PARAM_DISTANCE_KD_DEFAULT	4.0
 #define PARAM_I_LIMIT_NAME		"i_limit"
 #define PARAM_I_LIMIT_DEFAULT		0.5
 #define PARAM_DISTANCE_NAME             "distance"
