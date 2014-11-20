@@ -13,7 +13,7 @@
 #include <s8_motor_controller/StopAction.h>
 #include <s8_wall_follower_controller/FollowWallAction.h>
 
-#define HZ                              10
+#define HZ                              25
 
 #define PARAM_FOLLOWING_KP_NAME         "following_kp"
 #define PARAM_FOLLOWING_KP_DEFAULT      10.0
@@ -302,6 +302,11 @@ private:
     void publish() {
         geometry_msgs::Twist twist;
         twist.linear.x = v;
+	// Check for too high angular speed
+	if (w > 1.5 || w < -1.5)  {
+		ROS_WARN("Possibly bad IR sensor value");
+	w = 0;	
+	}
         twist.angular.z = w;
 
         twist_publisher.publish(twist);
