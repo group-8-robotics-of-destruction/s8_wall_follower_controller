@@ -25,10 +25,10 @@
 #define PARAM_DISTANCE_KI_DEFAULT       0.0
 #define PARAM_DISTANCE_KP_NAME          "distance_kp"
 #define PARAM_DISTANCE_KP_DEFAULT       10.0
-#define PARAM_DISTANCE_KD_NAME		"distance_kd"
-#define PARAM_DISTANCE_KD_DEFAULT	4.0
-#define PARAM_I_LIMIT_NAME		"i_limit"
-#define PARAM_I_LIMIT_DEFAULT		0.5
+#define PARAM_DISTANCE_KD_NAME          "distance_kd"
+#define PARAM_DISTANCE_KD_DEFAULT       4.0
+#define PARAM_I_LIMIT_NAME              "i_limit"
+#define PARAM_I_LIMIT_DEFAULT           0.5
 #define PARAM_DISTANCE_NAME             "distance"
 #define PARAM_DISTANCE_DEFAULT          0.09
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
@@ -201,7 +201,7 @@ private:
         ROS_INFO("Wall following action started. Wall to follow: %s", to_string(wall_to_follow).c_str());
 
         follow_pid.reset();
-	distance_pid.reset();
+    distance_pid.reset();
         align_pid.reset();
 
         preempted = false;
@@ -266,17 +266,17 @@ private:
     void distance_controller(double distance_diff, int towards_direction){
         int away_direction = -towards_direction;
         double diff = distance_diff * away_direction;
-	// Add back the kp_far and near difference perhaps?
-	if (distance_diff < 0) {
-		int old_kp = distance_pid.kp;
-		distance_pid.kp /= 5;
-		distance_pid.update(w,diff);
-		distance_pid.kp = old_kp;
-	}
-	else {
-		distance_pid.update(w, diff);
-	}
-	ROS_INFO("distance difference: %lf",  diff);
+    // Add back the kp_far and near difference perhaps?
+    if (distance_diff < 0) {
+        int old_kp = distance_pid.kp;
+        distance_pid.kp /= 5;
+        distance_pid.update(w,diff);
+        distance_pid.kp = old_kp;
+    }
+    else {
+        distance_pid.update(w, diff);
+    }
+    ROS_INFO("distance difference: %lf",  diff);
     }
 
     void align_controller(double back, double front, int towards_direction) {
@@ -302,11 +302,11 @@ private:
     void publish() {
         geometry_msgs::Twist twist;
         twist.linear.x = v;
-	// Check for too high angular speed
-	if (w > 1.5 || w < -1.5)  {
-		ROS_WARN("Possibly bad IR sensor value");
-	w = 0;	
-	}
+    // Check for too high angular speed
+    if (w > 1.5 || w < -1.5)  {
+        ROS_WARN("Possibly bad IR sensor value");
+    w = 0;  
+    }
         twist.angular.z = w;
 
         twist_publisher.publish(twist);
@@ -318,8 +318,8 @@ private:
         add_param(PARAM_FOLLOWING_KI_NAME, follow_pid.ki, PARAM_FOLLOWING_KI_DEFAULT);
         add_param(PARAM_DISTANCE_KI_NAME, distance_pid.ki, PARAM_DISTANCE_KI_DEFAULT);
         add_param(PARAM_DISTANCE_KP_NAME, distance_pid.kp, PARAM_DISTANCE_KP_DEFAULT);
-	add_param(PARAM_DISTANCE_KD_NAME, distance_pid.kd, PARAM_DISTANCE_KD_DEFAULT);
-	add_param(PARAM_I_LIMIT_NAME, distance_pid.i_limit, PARAM_I_LIMIT_DEFAULT);
+    add_param(PARAM_DISTANCE_KD_NAME, distance_pid.kd, PARAM_DISTANCE_KD_DEFAULT);
+    add_param(PARAM_I_LIMIT_NAME, distance_pid.i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
         add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
