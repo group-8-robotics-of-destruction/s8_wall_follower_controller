@@ -29,8 +29,6 @@
 #define PARAM_DISTANCE_KD_DEFAULT       4.0
 #define PARAM_I_LIMIT_NAME              "i_limit"
 #define PARAM_I_LIMIT_DEFAULT           0.5
-#define PARAM_DISTANCE_NAME             "distance"
-#define PARAM_DISTANCE_DEFAULT          0.09
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
 #define PARAM_LINEAR_SPEED_DEFAULT      0.2
 #define PARAM_IR_THRESHOLD_NAME         "ir_threshold"
@@ -191,6 +189,13 @@ private:
     void action_execute_follow_wall_callback(const s8_wall_follower_controller::FollowWallGoalConstPtr & goal) {
         wall_to_follow = WallToFollow(goal->wall_to_follow);
 
+		double back = wall_to_follow == WallToFollow::LEFT ? left_back : right_back;
+	    double front = wall_to_follow == WallToFollow::LEFT ? left_front : right_front;
+
+	    // TODO: Do some distance check for the following
+
+	    distance = get_average(back,front);
+
         const int timeout = 30; // 30 seconds.
         const int rate_hz = 10;
 
@@ -201,7 +206,7 @@ private:
         ROS_INFO("Wall following action started. Wall to follow: %s", to_string(wall_to_follow).c_str());
 
         follow_pid.reset();
-    distance_pid.reset();
+    	distance_pid.reset();
         align_pid.reset();
 
         preempted = false;
@@ -238,6 +243,10 @@ private:
         }
     }
 
+    double get_average(double back, double front) {
+    	return (back + front) / 2;
+    }
+
     double get_controller_diff(double back, double front, int away_direction) {
         return away_direction * (back - front);
     }
@@ -246,7 +255,7 @@ private:
         int away_direction = -towards_direction;
 
         double diff = get_controller_diff(back, front, away_direction);
-        double average = (back + front) / 2;
+        double average = get_average(back,front);
 
         w = 0.0;
 
@@ -318,9 +327,8 @@ private:
         add_param(PARAM_FOLLOWING_KI_NAME, follow_pid.ki, PARAM_FOLLOWING_KI_DEFAULT);
         add_param(PARAM_DISTANCE_KI_NAME, distance_pid.ki, PARAM_DISTANCE_KI_DEFAULT);
         add_param(PARAM_DISTANCE_KP_NAME, distance_pid.kp, PARAM_DISTANCE_KP_DEFAULT);
-    add_param(PARAM_DISTANCE_KD_NAME, distance_pid.kd, PARAM_DISTANCE_KD_DEFAULT);
-    add_param(PARAM_I_LIMIT_NAME, distance_pid.i_limit, PARAM_I_LIMIT_DEFAULT);
-        add_param(PARAM_DISTANCE_NAME, distance, PARAM_DISTANCE_DEFAULT);
+    	add_param(PARAM_DISTANCE_KD_NAME, distance_pid.kd, PARAM_DISTANCE_KD_DEFAULT);
+	    add_param(PARAM_I_LIMIT_NAME, distance_pid.i_limit, PARAM_I_LIMIT_DEFAULT);
         add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
         add_param(PARAM_IR_THRESHOLD_NAME, ir_threshold, PARAM_IR_THRESHOLD_DEFAULT);
         add_param(PARAM_ALIGNMENT_KP_NAME, align_pid.kp, PARAM_ALIGNMENT_KP_DEFAULT);
