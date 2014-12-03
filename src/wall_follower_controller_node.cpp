@@ -12,6 +12,8 @@
 #include <s8_msgs/IRDistances.h>
 #include <s8_motor_controller/StopAction.h>
 #include <s8_wall_follower_controller/FollowWallAction.h>
+#include <s8_pose/pose_node.h>
+#include <s8_pose/setOrientation.h>
 
 #define HZ                              25
 
@@ -30,7 +32,7 @@
 #define PARAM_I_LIMIT_NAME              "i_limit"
 #define PARAM_I_LIMIT_DEFAULT           0.5
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
-#define PARAM_LINEAR_SPEED_DEFAULT      0.2
+#define PARAM_LINEAR_SPEED_DEFAULT      0.15
 #define PARAM_IR_THRESHOLD_NAME         "ir_threshold"
 #define PARAM_IR_THRESHOLD_DEFAULT      0.2
 #define PARAM_ALIGNMENT_KP_NAME         "alignment_kp"
@@ -46,6 +48,7 @@ using namespace s8;
 using namespace s8::wall_follower_controller_node;
 using namespace s8::pid;
 using namespace s8::utils::math;
+using s8::pose_node::SERVICE_SET_ORIENTATION;
 
 #define IR_INVALID_VALUE ir_sensors_node::TRESHOLD_VALUE
 
@@ -79,6 +82,8 @@ class WallFollower : public Node {
     int alignment_angle;
     double alignment_speed;
 
+    ros::ServiceClient set_orientation_client;
+
 public:
     WallFollower(int hz) : distance_pid (hz), follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
         init_params();
@@ -87,6 +92,8 @@ public:
         ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1, &WallFollower::ir_distances_callback, this);
         twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1);
         
+        set_orientation_client = nh.serviceClient<s8_pose::setOrientation>(SERVICE_SET_ORIENTATION, true);
+
         follow_wall_action.registerPreemptCallback(boost::bind(&WallFollower::follow_wall_cancel_callback, this));
 
         follow_wall_action.start();
@@ -127,6 +134,7 @@ public:
                         ROS_INFO("Alignment complete!");
                         v = 0.0;
                         w = 0.0;
+                        set_orientation();
                     } else {
                         ROS_INFO("First alignment check");
                         alignment_streak++;
@@ -330,6 +338,14 @@ private:
 
         twist.angular.z = w;
         twist_publisher.publish(twist);
+    }
+
+    void set_orientation() {
+        s8_pose::setOrientation pn;
+        pn.request.orientation = true;
+        if(!set_orientation_client.call(pn)) {
+            ROS_FATAL("Failed to call set orientation node.");
+        }
     }
 
     void init_params() {
