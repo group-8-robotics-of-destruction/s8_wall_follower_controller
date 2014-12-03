@@ -193,12 +193,22 @@ private:
         
         wall_to_follow = WallToFollow(goal->wall_to_follow);
 
-		double back = wall_to_follow == WallToFollow::LEFT ? left_back : right_back;
-	    double front = wall_to_follow == WallToFollow::LEFT ? left_front : right_front;
+	double back = wall_to_follow == WallToFollow::LEFT ? left_back : right_back;
+	double front = wall_to_follow == WallToFollow::LEFT ? left_front : right_front;
 
-	    // TODO: Do some distance check for the following
+	// TODO: Do some distance check for the following and change num to param
 
-	    distance = get_average(back,front);
+	distance = get_average(back,front);
+
+	// If the robot is rather close just follow the current distance (to avoid quick turning aways)
+	// if it is very close increase by a small distance, if it's far go to the default value
+
+	if (distance < 0.07) {
+		distance += 0.02;
+	}
+	else if (distance > 0.09) {
+		distance = 0.09;
+	}
 
         const int timeout = 30; // 30 seconds.
         const int rate_hz = 10;
