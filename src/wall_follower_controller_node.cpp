@@ -134,7 +134,7 @@ public:
                         ROS_INFO("Alignment complete!");
                         v = 0.0;
                         w = 0.0;
-                        set_orientation();
+                        set_orientation(true);
                     } else {
                         ROS_INFO("First alignment check");
                         alignment_streak++;
@@ -148,6 +148,7 @@ public:
             }
 
             if(!aligning) {
+                //set_orientation(false);
                 follow_controller(back, front, wall_to_follow);
             }
         } else {
@@ -340,9 +341,10 @@ private:
         twist_publisher.publish(twist);
     }
 
-    void set_orientation() {
+    void set_orientation(bool aligning) {
         s8_pose::setOrientation pn;
         pn.request.orientation = true;
+        pn.request.aligning = aligning;
         if(!set_orientation_client.call(pn)) {
             ROS_FATAL("Failed to call set orientation node.");
         }
